@@ -1273,8 +1273,9 @@
         if (co !== null && seat === co) return 'CO';
         const label = state.handRoles?.get(seat) || '';
         if (label.includes('Hijack')) return 'HJ';
+        if (label.includes('Lojack')) return 'LJ';
         if (label.includes('Under the Gun')) return 'UTG';
-        return 'MP';
+        return 'LJ';
       }
 
       function PreflopLimpersBefore(player) {
@@ -1284,7 +1285,7 @@
       }
 
       function PositionInfo(player) {
-        if (!player) {return { pos01: 0.5, actorsAhead: 0, actorsBehind: 0, role: 'MP', n: 0 };}
+        if (!player) {return { pos01: 0.5, actorsAhead: 0, actorsBehind: 0, role: 'LJ', n: 0 };}
         
         const players = state.players || [];
         const nSeats = players.length || TOTAL_SEATS;
@@ -2569,7 +2570,7 @@
         const shortAllInPressureBB = shortAllInVillain ? Math.max(toCall, aggressor?.bet || 0, aggressor?.contributed || 0) / Math.max(1, BIG_BLIND || 1) : 0;
 
         const ctx = {p, phase, toCall, pot, potAfterCall, potOdds, toCallBB, effectiveBetBB, stackBB, effectiveStack, effectiveStackBB, primaryOpponent:aggressor, betFrac, betPotFrac, allInCall, tinyBet, overbet, spr, legalActions, active, liveOpponents, oppCount,
-          pos01:pos.pos01 ?? .5, actorsAhead:pos.actorsAhead || 0, actorsBehind:pos.actorsBehind || 0, role:pos.role || 'MP',
+          pos01:pos.pos01 ?? .5, actorsAhead:pos.actorsAhead || 0, actorsBehind:pos.actorsBehind || 0, role:pos.role || 'LJ',
           preflopClass, preflopFamily, preflopShape:preflopFamily || {},
           preflopDrawHand:!!preflopFamily?.drawHand, cheapFlopHand:!!preflopFamily?.cheapFlopHand, setMineHand:!!preflopFamily?.setMineHand,
           callCommitFrac, incrementalStackFrac, stackCommitSensitivity:0, effectiveStackCommitCall:false, pst, rel, relScore10, texture, draws, boardDominated, kickerOnly,
@@ -4428,9 +4429,7 @@
         const peak = Math.max(low, Math.min(high, Number(mode) || low));
         const u = Math.random();
         const split = (peak - low) / (high - low);
-        return u < split
-          ? low + Math.sqrt(u * (high - low) * (peak - low))
-          : high - Math.sqrt((1 - u) * (high - low) * (high - peak));
+        return u < split ? low + Math.sqrt(u * (high - low) * (peak - low)) : high - Math.sqrt((1 - u) * (high - low) * (high - peak));
       }
 
       function avgStackBB(players) {return players.length ? players.reduce((s, e) => s + e.stack / Math.max(1, BIG_BLIND), 0) / players.length : 0;}
@@ -4575,8 +4574,8 @@
       
       const Tournament = {
         active: false,synchronized: true,entrants: [],tables: [],winnerAnnounced: false,visibleTableId: 0,intervalMinutes: 5,levelIndex: 0,
-        blindLevels: [[3,5],[5,10],[10,20],[15,30],[25,50],[35,70],[50,100],[75,150],[100,200],[150,300],[200,400],[250,500],
-          [500,1000]],nextLevelAt: 0,timers: { blinds: null, sim: null },
+        blindLevels: [[3,5],[5,10],[10,20],[15,30],[25,50],[35,70],[50,100],[75,150],[100,200],[150,300],[200,400],[250,500],[500,1000]],
+        nextLevelAt:0,timers:{ blinds:null,sim:null},
           
         init(humanSeat) {
           this.reset();
