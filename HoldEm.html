@@ -676,7 +676,7 @@
         const base = Math.floor(count / tableCount);
         const sizes = Array(tableCount).fill(base);
         let remainder = count - base * tableCount;
-        for (let i = sizes.length - 1; i >= 0 && remainder > 0; i--) {const add = Math.min(8 - sizes[i], remainder);sizes[i] += add;remainder -= add;}
+        for (let i = 0; i < sizes.length && remainder > 0; i++) {const add = Math.min(8 - sizes[i], remainder);sizes[i] += add;remainder -= add;}
         return sizes;
       }
 
@@ -2113,14 +2113,20 @@
         const stackBB = Number.isFinite(ctx.stackBB) ? ctx.stackBB : ((ctx.p?.stack || 0) / Math.max(1, BIG_BLIND || 1));
         const raiseCount = ctx.raiseCount || 0;
         const shortField = !!ctx.shortFieldPreflop;
-        const lateRole = ctx.role === 'BTN' || ctx.role === 'CO';
+        const lateRole = ctx.role === 'BTN' || ctx.role === 'CO' || ctx.role === 'HJ' || ctx.role === 'SB' || !!ctx.preflopLateAttackSpot;
         const limpOrUnopened = raiseCount === 0 && toCallBB <= 1.25;
         const lateStealOpen = !!(ctx.preflopStealSpot && toCallBB <= 1.25 && raiseCount === 0);
-        const lateLowPairPressure = !!(fam.setMineHand && lateRole && limpOrUnopened && commit <= .08 && stackBB > 10 && ctx.canRaise);
+        const foldedPressure = clamp01(ctx.preflopFoldPressure || 0);
+        const blindBattle = !!(ctx.role === 'SB' && ctx.actorsBehind <= 1 && limpOrUnopened);
+        const faceCards = (fam.broadwayCount || 0) >= 2;
+        const attackConnector = !!(fam.suited && (fam.connector || fam.oneGapper || fam.twoGapper));
+        const attackHighCard = fam.a >= 13 || fam.a === 14 || (fam.a >= 11 && foldedPressure >= .45);
+        const lateLowPairPressure = !!(fam.setMineHand && lateRole && limpOrUnopened && commit <= .10 && stackBB > 6 && ctx.canRaise);
         const latePlayablePressure = !!(lateRole && limpOrUnopened && commit <= .08 && stackBB > 10 && ctx.canRaise &&
-          (fam.cls === 'medium' || (fam.cls === 'strong' && fam.family !== 'premium-pair') || (fam.pressureCandidate && !fam.cheapFlopHand)));
-        const latePressureTarget = lateLowPairPressure ? .20 : fam.cls === 'strong' ? .33 : fam.cls === 'medium' ? .20 : latePlayablePressure ? .18 : .08;
-        const lateLimpPressure = !!(lateLowPairPressure || latePlayablePressure || (fam.pressureCandidate && lateRole && limpOrUnopened && commit <= .08 && ctx.canRaise));
+          (fam.cls === 'medium' || (fam.cls === 'strong' && fam.family !== 'premium-pair') || fam.pressureCandidate || faceCards || attackConnector || attackHighCard));
+        const latePressureTarget = lateLowPairPressure ? Math.max(.20, .34 + .28 * foldedPressure) : fam.cls === 'strong' ? Math.max(.33, .42 + .22 * foldedPressure) :
+          fam.cls === 'medium' ? Math.max(.20, .30 + .24 * foldedPressure) : latePlayablePressure ? Math.max(.18, .24 + .28 * foldedPressure) : .08 + .18 * foldedPressure;
+        const lateLimpPressure = !!(lateLowPairPressure || latePlayablePressure || (fam.pressureCandidate && lateRole && limpOrUnopened && commit <= .10 && ctx.canRaise));
         // Preflop limping/cheap-flop decisions driven by cost and stack commitment, not pot odds. Calling 1BB can be ugly pot odds but still be reasonable to sneak into a flop
         const limpForBB = toCall > 0 && toCallBB <= 1.25 && commit <= .08 && raiseCount <= 0;
         const cheap = limpForBB;
@@ -2134,7 +2140,7 @@
         const smallBlindHalfBBFlop = !!(toCall > 0 && ctx.role === 'SB' && toCallBB <= .55 && commit <= .08 && raiseCount <= 0);
         const positionCheapAnyFlop = lateOneBBFlop || smallBlindHalfBBFlop;
         const limpPlayable = limpForBB && !brutal && (fam.cls !== 'trash' || (fam.score || 0) >= 30 || fam.suited || fam.connector || fringeOneBBPlayable);
-        const canPressure = !!(((fam.pressureCandidate || lateLowPairPressure || latePlayablePressure) && !expensive && !brutal &&
+        const canPressure = !!(((fam.pressureCandidate || lateLowPairPressure || latePlayablePressure || (ctx.preflopLateAttackSpot && (faceCards || attackConnector || attackHighCard || fam.pair))) && !expensive && !brutal &&
           (shortField || lateStealOpen || lateLowPairPressure || latePlayablePressure) && (toCallBB <= 4.25 || commit <= .14)));
         let mode = 'fold-or-check';
         let callWeight = 0, pressureWeight = 0, releaseWeight = 0;
@@ -2178,7 +2184,7 @@
 
         return {mode,family:fam.family,cls:fam.cls,plan:fam.plan,cheap,reasonable,expensive,brutal,commit,potOdds,toCallBB,stackBB,limpForBB,limpPlayable,
           lateOneBBFlop,smallBlindHalfBBFlop,positionCheapAnyFlop,shortField,lateStealOpen,lateLowPairPressure,latePlayablePressure,lateLimpPressure,
-          latePressureTarget,canPressure,anyAce,tinySuitedTrickHand,fringeOneBBPlayable,callWeight:clamp01(callWeight),pressureWeight:clamp01(pressureWeight),
+          blindBattle,foldedPressure,faceCards,attackConnector,attackHighCard,latePressureTarget,canPressure,anyAce,tinySuitedTrickHand,fringeOneBBPlayable,callWeight:clamp01(callWeight),pressureWeight:clamp01(pressureWeight),
           releaseWeight:clamp01(releaseWeight),notes:[...(fam.notes || [])]};
       }
 
@@ -2554,6 +2560,9 @@
         const canRaise = legalActions.includes('raise');
         const canBet = legalActions.includes('bet');
         const actedBefore = state.actedThisRound?.size || 0;
+        const foldedToPreflopPressure = phase === 'PreFlop' && raiseCount === 0 && preflopLimpers === 0 && toCall <= BIG_BLIND * 1.25 && canRaise;
+        const preflopFoldPressure = foldedToPreflopPressure ? clamp01((5 - Math.min(5, pos.actorsBehind || 0)) / 5) : 0;
+        const preflopLateAttackSpot = foldedToPreflopPressure && (preflopFoldPressure >= .20 || pos.role === 'SB' || pos.role === 'BTN' || pos.role === 'CO' || pos.role === 'HJ');
         const postflopLastToAct = phase !== 'PreFlop' && (pos.actorsBehind || 0) === 0;
         const postflopOutOfPosition = phase !== 'PreFlop' && (pos.actorsBehind || 0) > 0;
         const headsUpPostflop = phase !== 'PreFlop' && oppCount === 1;
@@ -2575,10 +2584,11 @@
           preflopDrawHand:!!preflopFamily?.drawHand, cheapFlopHand:!!preflopFamily?.cheapFlopHand, setMineHand:!!preflopFamily?.setMineHand,
           callCommitFrac, incrementalStackFrac, stackCommitSensitivity:0, effectiveStackCommitCall:false, pst, rel, relScore10, texture, draws, boardDominated, kickerOnly,
           risky01, bluff01, smart01, patient01, raiseCount, canRaise, canBet, preflopAggressorRole, preflopLimpers, unopenedPreflop, shortFieldPreflop, shortHandedPreflop, tablePlayers,
+          foldedToPreflopPressure, preflopFoldPressure, preflopLateAttackSpot,
           postflopLastToAct, postflopOutOfPosition, headsUpPostflop,
           passiveOpenPot, passiveLateStabSpot, passiveHeadsUpProbeSpot, passiveRiverProbeSpot, passivePostflopStreets:state.passivePostflopStreets || 0,
           tournamentAvgStack, tournamentRemaining, lateTournamentStage, lateTournamentPressure, aboveAverageTournamentStack, shortAllInVillain, shortAllInPressureBB,
-          preflopStealSpot:unopenedPreflop && toCall <= BIG_BLIND && (pos.role === 'BTN' || pos.role === 'CO') && canRaise,
+          preflopStealSpot:preflopLateAttackSpot,
           facingLateSteal:phase === 'PreFlop' && toCall > 0 && (pos.role === 'SB' || pos.role === 'BB') && raiseCount <= 1 && (preflopAggressorRole === 'BTN' || preflopAggressorRole === 'CO'),
           preflopJamPressure:phase === 'PreFlop' && toCall > 0 && (allInCall || toCall >= BIG_BLIND * 18 || callCommitFrac >= .30 || (raiseCount >= 2 && toCall >= BIG_BLIND * 5)),
           isPreflopAggressor:!!(state.preflopAggressor && state.preflopAggressor.seat === p.seat),
@@ -2982,6 +2992,29 @@
           }
         }
 
+        if (ctx.preflopLateAttackSpot) {
+          const foldedPressure = clamp01(ctx.preflopFoldPressure || 0);
+          const faceCards = (fam.broadwayCount || 0) >= 2;
+          const attackConnector = !!(fam.suited && (fam.connector || fam.oneGapper || fam.twoGapper));
+          const kingOrAce = fam.a >= 13 || fam.a === 14;
+          const highCardSteal = fam.a >= 11 || fam.broadwayCount >= 1;
+          const attackValue = fam.pair ? 1 : kingOrAce ? .82 : faceCards ? .78 : attackConnector ? .70 : fam.pressureCandidate ? .58 : highCardSteal ? .42 : fam.suited || fam.connector ? .34 : .14;
+          const sbBattle = ctx.role === 'SB' && ctx.actorsBehind <= 1;
+          const boost = foldedPressure * attackValue * (sbBattle ? 1.22 : 1);
+          if (boost > 0) {
+            PieAdjust(scores, 'fold', -(420 + (sbBattle ? 260 : 120)) * boost);
+            PieAdjust(scores, 'call', (120 + 90 * ctx.patient01) * boost);
+            PieAdjust(scores, 'raise', (500 + 230 * ctx.risky01 + 185 * ctx.bluff01 + (sbBattle ? 130 : 0)) * boost);
+            PieAdjust(scores, 'bet', (260 + 150 * ctx.risky01 + 110 * ctx.bluff01) * boost);
+            PieAdjust(scores, 'allin', (ctx.stackBB <= 12 ? 190 : 45) * boost * (.65 + .5 * ctx.risky01));
+            if (sbBattle && (fam.pair || faceCards || attackConnector || kingOrAce)) {
+              PieAdjust(scores, 'fold', -1200);
+              PieAdjust(scores, 'raise', 280 + 120 * ctx.risky01);
+            }
+            ctx.preflopLateAttack = {role:ctx.role, actorsBehind:ctx.actorsBehind, foldedPressure, family:fam.family, attackValue, boost, sbBattle};
+          }
+        }
+
         if (mode === 'value-open' || mode === 'value-continue') {
           PieAdjust(scores, 'bet', 175 + 175 * plan.pressureWeight);
           PieAdjust(scores, 'raise', 250 + 350 * plan.pressureWeight);
@@ -3065,7 +3098,7 @@
           const trashHand = fam.cls === 'trash';
           PieAdjust(scores, 'call', cheapBias * (trashHand ? 4300 : 1150) + 250 * plan.callWeight + 75 * ctx.pos01);
           PieAdjust(scores, 'fold', -cheapBias * (trashHand ? 5600 : 1200) - 175 * plan.callWeight);
-          PieAdjust(scores, 'raise', -75 + 200 * (plan.pressureWeight || 0));
+          PieAdjust(scores, 'raise', -75 + 200 * (plan.pressureWeight || 0) + (plan.smallBlindHalfBBFlop ? 260 * (plan.foldedPressure || ctx.preflopFoldPressure || 0) : 0));
           PieAdjust(scores, 'allin', -425);
           ctx.preflopCheapPositionAny = {role:ctx.role, mode, toCallBB:plan.toCallBB, callWeight:plan.callWeight, trashHand,
             intent:plan.smallBlindHalfBBFlop ? 'small-blind-half-bb-see-flop' : 'late-position-1bb-see-flop'};
@@ -3494,6 +3527,51 @@
         ctx.bluffLines = {semiBluff, cbet, delayed, scare, blocker, missed};
       }
 
+      function PieApplyBluffRaiseModifier(scores, ctx) {
+        if (ctx.toCall <= 0 || !ctx.canRaise) return;
+        const fewOpp = (ctx.oppCount || 0) <= 2;
+        const risky = ctx.risky01 || 0;
+        const bluff = ctx.bluff01 || 0;
+        const smart = ctx.smart01 || 0;
+        const patient = ctx.patient01 || 0;
+
+        if (ctx.phase === 'PreFlop') {
+          if ((ctx.raiseCount || 0) !== 1) return;
+          const fam = ctx.preflopFamily || ctx.preflopShape || {};
+          const lightCandidate = ctx.preflopLateAttackSpot || ctx.facingLateSteal || ctx.role === 'SB' || ctx.role === 'BB' || (ctx.actorsBehind || 9) <= 2;
+          const blocker = fam.a === 14 || fam.a === 13 || (fam.broadwayCount || 0) >= 1;
+          const shape = fam.suited || fam.connector || fam.oneGapper || fam.pair || blocker;
+          if (!lightCandidate || !shape || ctx.preflopClass === 'premium') return;
+          const pressure = clamp01(.18 + .22 * (ctx.preflopFoldPressure || 0) + .26 * bluff + .22 * risky + .12 * smart - .12 * patient + (blocker ? .12 : 0));
+          PieAdjust(scores, 'raise', 180 + 620 * pressure);
+          PieAdjust(scores, 'call', -70 - 135 * pressure);
+          PieAdjust(scores, 'fold', -95 * pressure);
+          PieAdjust(scores, 'allin', (ctx.stackBB <= 16 ? 155 : -70) * pressure);
+          ctx.bluffRaiseLines = {kind:'preflop-light-3bet', pressure, family:fam.family, blocker, shape, lightCandidate};
+          return;
+        }
+
+        const actedEarlier = !!state.actedThisRound?.has?.(ctx.p?.seat);
+        const checkRaise = actedEarlier && !ctx.isStreetAggressor;
+        const reRaise = (ctx.raiseCount || 0) >= 1 && state.lastAggressor && state.lastAggressor !== ctx.p;
+        if (!fewOpp || (!checkRaise && !reRaise)) return;
+
+        const weakOrMedium = ctx.bucket === 'bad' || ctx.bucket === 'weak' || ctx.bucket === 'medium';
+        const semiBluff = ctx.phase !== 'River' && (ctx.drawPower || 0) >= .35;
+        const scareBoard = !!(ctx.texture?.monotone || ctx.texture?.paired || (ctx.texture?.straightFear || 0) >= .62 || ctx.texture?.likelyBackdoorFlush || ctx.texture?.likelyBackdoorStraight);
+        const blocker = !!(ctx.p?.hand || []).some(c => (Number(c?.value) || 0) >= 13);
+        const story = weakOrMedium && !ctx.boardDominated && (semiBluff || scareBoard || blocker || bluff >= .62);
+        if (!story) return;
+
+        const storyStrength = clamp01(.16 + .24 * bluff + .22 * risky + .14 * smart - .10 * patient + (semiBluff ? .18 : 0) + (scareBoard ? .12 : 0) + (blocker ? .08 : 0));
+        const raisePush = (checkRaise ? 260 : 180) + (checkRaise ? 720 : 540) * storyStrength;
+        PieAdjust(scores, 'raise', raisePush);
+        PieAdjust(scores, 'call', -90 - 130 * storyStrength);
+        PieAdjust(scores, 'fold', -115 * storyStrength);
+        PieAdjust(scores, 'allin', ctx.spr <= 1.25 && (semiBluff || risky >= .70) ? 160 * storyStrength : -80 * storyStrength);
+        ctx.bluffRaiseLines = {kind:checkRaise ? 'bluff-check-raise' : 'bluff-reraise', storyStrength, semiBluff, scareBoard, blocker, weakOrMedium, raisePush:Math.round(raisePush)};
+      }
+
       // --------------------------------------------------------------------------
       // PIE Bet Sizing & Final CPU Decision
       // --------------------------------------------------------------------------
@@ -3804,7 +3882,7 @@
           pos01:ctx.pos01, actorsAhead:ctx.actorsAhead, actorsBehind:ctx.actorsBehind, postflopLastToAct:ctx.postflopLastToAct, postflopOutOfPosition:ctx.postflopOutOfPosition,
           preflopAggressorRole:ctx.preflopAggressorRole, preflopLimpers:ctx.preflopLimpers, unopenedPreflop:ctx.unopenedPreflop, preflopStealSpot:ctx.preflopStealSpot,
           facingLateSteal:ctx.facingLateSteal, shortHandedPreflop:ctx.shortHandedPreflop, tablePlayers:ctx.tablePlayers, tournamentRemaining:ctx.tournamentRemaining, lateTournamentStage:ctx.lateTournamentStage, lateTournamentPressure:ctx.lateTournamentPressure,
-          preflopFamily:{...(ctx.preflopFamily || {})}, preflopPlan:{...(ctx.preflopPlan || {})}, preflopShape:{...(ctx.preflopShape || {})},
+          preflopFamily:{...(ctx.preflopFamily || {})}, preflopPlan:{...(ctx.preflopPlan || {})}, preflopShape:{...(ctx.preflopShape || {})}, preflopLateAttack:{...(ctx.preflopLateAttack || {})},
           cheapFlopStatus:{...(ctx.cheapFlopStatus || {})}, preflopDrawDiscipline:{...(ctx.preflopDrawDiscipline || {})}, stackOffProfile:{...(ctx.stackOffProfile || {})},
           stackOffDiscipline:{...(ctx.stackOffDiscipline || {})}, blindSteal:{...(ctx.blindSteal || {})},
           passiveTableStab:{...(ctx.passiveTableStab || {})}, passiveHeadsUpProbe:{...(ctx.passiveHeadsUpProbe || {})}, passiveRiverProbe:{...(ctx.passiveRiverProbe || {})}, lateTournamentAdjustment:{...(ctx.lateTournamentAdjustment || {})},
@@ -3812,7 +3890,7 @@
           bigStackShortAllInDefense:{...(ctx.bigStackShortAllInDefense || {})}, stackOffDrawRelief:{...(ctx.stackOffDrawRelief || {})},
           betSizing:{...(ctx.betSizing || {})}, bucketBasePoints:{...(ctx.pieBucketBase || {})}, bucketBaseTables:PIE_BUCKET_BASE_POINTS,
           multiwayProfile:{...(ctx.multiwayProfile || {})}, observedTendencies:{...(ctx.observedTendencies || {})}, rangeObservation:{...(ctx.rangePressure?.observed || {})},
-          bluffLines:{...(ctx.bluffLines || {})}, legal:[...(ctx.legalActions || [])], baseScores:{...(ctx.pieBaseScores || {})}, modifiers:[...(ctx.pieModifiers || [])],
+          bluffLines:{...(ctx.bluffLines || {})}, bluffRaiseLines:{...(ctx.bluffRaiseLines || {})}, legal:[...(ctx.legalActions || [])], baseScores:{...(ctx.pieBaseScores || {})}, modifiers:[...(ctx.pieModifiers || [])],
           scores:{...scores}, temperature:ctx.pieTemperature, weights:{...(ctx.pieShiftedScores || ctx.pieWeights || {})}, weightTotal:ctx.pieShiftedTotal || ctx.pieTotal || 0,
           probabilities:{...probabilities}, choice, action};
       }
@@ -3838,6 +3916,7 @@
         PieRunModifier(ctx, scores, 'personality', PieApplyPersonalityModifier);
         PieRunModifier(ctx, scores, 'observed opponent tendencies', PieApplyObservedStatsModifier);
         PieRunModifier(ctx, scores, 'bluff line selection', PieApplyBluffLineModifier);
+        PieRunModifier(ctx, scores, 'bluff check-raise / re-raise pressure', PieApplyBluffRaiseModifier);
         PieRunModifier(ctx, scores, 'no-limit stack pressure', PieApplyNoLimitPressureModifier);
         PieRunModifier(ctx, scores, 'massive air-bluff lottery', PieApplyMassiveAirBluffModifier);
         const probabilities = PieNormalizeScores(ctx, scores);
