@@ -33,7 +33,7 @@
       button:disabled {opacity:.35;cursor:not-allowed;box-shadow:none;filter:grayscale(.35);}
       
       .hidden {display:none!important;}
-      .app {min-height:100vh;display:grid;grid-template-rows:auto 1fr auto;gap:8px;padding:10px;background:radial-gradient(circle at center,#222,#000);}
+      .app {min-height:100vh;display:grid;grid-template-rows:auto 1fr;gap:8px;padding:10px;background:radial-gradient(circle at center,#222,#000);}
       .topbar {min-height:75px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;gap:20px;background:#111;
           border:1px solid #444;border-radius:14px;box-shadow:0 6px 18px #000;}
       .app-layout {display: grid;grid-template-columns: 200px 1fr;gap: 15px;align-items:start;}
@@ -75,6 +75,7 @@
       
       #startCashBtn,#betBtn,#betPctBtn {background:linear-gradient(#8d8,#373);color: #111;text-shadow:none;}
       #startTourneyBtn,#soundBtn {background:linear-gradient(#39f,#35a);}
+      #showLogBtn {background:linear-gradient(#513070,#261136);}
       #foldBtn {background:linear-gradient(#800, #c22);}
       #callBtn {background:linear-gradient(#ddd,#aaa);color:#111;text-shadow:none;}
       #allInBtn {background:linear-gradient(#fd8,#c93);color:#111;text-shadow:none;}
@@ -245,7 +246,9 @@
       .seat6 {right:42px;left:auto;top:50%;transform:translateY(-50%);}
       .seat7 {right:calc(20% + 1px);left:auto;top:auto;bottom:40px;transform:none;}
       
-      .message-log {height:200px;padding:4px 6px;overflow:auto;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(0,0,0,.32);color:#fff;font-size:13px;line-height:1.0;}
+      .log-panel {position:fixed;left:0;top:0;z-index:1200;width:400px;height:100vh;display:flex;flex-direction:column;gap:8px;padding:8px;border-right:2px solid rgba(255,255,255,.22);background:#06284b;box-shadow:8px 0 22px rgba(0,0,0,.55);}
+      .message-log {flex:1 1 auto;min-height:0;padding:4px 6px;overflow:auto;border:1px solid rgba(255,255,255,.16);border-radius:12px;background:rgba(0,0,0,.32);color:#fff;font-size:13px;line-height:1.0;}
+      .log-close-btn {flex:0 0 auto;width:90px;align-self:center;background:linear-gradient(#777,#333);color:#fff;}
       .log-line {margin-bottom:1px;padding:1px 0;}
       .log-line.info {color:#fff;}
       .log-line.norm {color:#999;}
@@ -383,6 +386,7 @@
             <button id="continuousBtn" class="table-control-btn continuous-btn">Manual Deal</button>
             <div class="action-gap"></div>
             <button id="soundBtn">Sound: On</button>
+            <button id="showLogBtn">Show Log</button>
           </div>
         </section>
         <main class="table-wrap">
@@ -398,7 +402,10 @@
           </section>
         </main>
       </div>
-    <div class="message-log" id="log"></div>
+    <aside class="log-panel hidden" id="logPanel">
+      <div class="message-log" id="log"></div>
+      <button id="closeLogBtn" class="log-close-btn">Close</button>
+    </aside>
     
     <div class="overlay hidden" id="seatOverlay">
       <div class="modal">
@@ -635,6 +642,31 @@
           const hand = HandResultDescription(evaled);
           return `${phrase} ${money(amount)}${hand ? ` with ${hand}` : ''}`;
         }).join('; ') + (results.length ? '.' : '');
+      }
+
+      function HoleCardsDescription(player) {
+        const cards = (player?.hand || []).filter(Boolean);
+        if (!cards.length) return '';
+        return cards.map(c => `${c.rank}${c.suit}`).join(' ');
+      }
+
+      function BestAvailableHandDescription(player) {
+        if (!player?.hand?.length) return '';
+        const cards = [...player.hand, ...(state.community || [])];
+        if (cards.length >= 5) {
+          const evaled = EvaluateSevenCards(cards);
+          player.lastEval = evaled;
+          const hand = HandResultDescription(evaled);
+          if (hand) return hand;
+        }
+        const hole = HoleCardsDescription(player);
+        return hole ? `hole cards ${hole}` : '';
+      }
+
+      function NoShowdownWinText(player, amount) {
+        const phrase = player?.human ? 'You win' : `${player?.name || 'Winner'} wins`;
+        const hand = BestAvailableHandDescription(player);
+        return `${phrase} ${money(amount)}${hand ? ` with ${hand}` : ''}.`;
       }
 
       function TournamentTableSizes(playerCount) {
@@ -1512,8 +1544,7 @@
         if (live.length !== 1) return false;
         
         const winner = live[0];
-        const phrase = winner.human ? 'You win' : `${winner.name} wins`;
-        const resultText = `${phrase} ${money(state.pot)}. Everyone else folded.`;
+        const resultText = NoShowdownWinText(winner, state.pot);
         const winnings = new Map();
         winnings.set(winner.seat, state.pot);
         const winnerSeats = new Set([winner.seat]);
@@ -2531,6 +2562,9 @@
         const passiveHeadsUpProbeSpot = passiveOpenPot && headsUpPostflop;
         const passiveRiverProbeSpot = passiveOpenPot && phase === 'River' && ((state.passivePostflopStreets || 0) >= 2 || (pos.actorsAhead || 0) === 0);
         const tournamentAvgStack = AverageLiveTournamentStack();
+        const tournamentRemaining = state.mode === 'tournament' && Tournament?.active ? Tournament.remaining() : 0;
+        const lateTournamentStage = tournamentRemaining > 0 && tournamentRemaining < 5;
+        const lateTournamentPressure = lateTournamentStage ? (tournamentRemaining <= 2 ? 1 : tournamentRemaining === 3 ? .75 : .5) : 0;
         const aboveAverageTournamentStack = state.mode === 'tournament' && tournamentAvgStack > 0 && ((p.stack || 0) + (p.contributed || 0)) >= tournamentAvgStack * 1.05;
         const shortAllInVillain = toCall > 0 && oppCount === 1 && !!aggressor?.allIn;
         const shortAllInPressureBB = shortAllInVillain ? Math.max(toCall, aggressor?.bet || 0, aggressor?.contributed || 0) / Math.max(1, BIG_BLIND || 1) : 0;
@@ -2543,7 +2577,7 @@
           risky01, bluff01, smart01, patient01, raiseCount, canRaise, canBet, preflopAggressorRole, preflopLimpers, unopenedPreflop, shortFieldPreflop, shortHandedPreflop, tablePlayers,
           postflopLastToAct, postflopOutOfPosition, headsUpPostflop,
           passiveOpenPot, passiveLateStabSpot, passiveHeadsUpProbeSpot, passiveRiverProbeSpot, passivePostflopStreets:state.passivePostflopStreets || 0,
-          tournamentAvgStack, aboveAverageTournamentStack, shortAllInVillain, shortAllInPressureBB,
+          tournamentAvgStack, tournamentRemaining, lateTournamentStage, lateTournamentPressure, aboveAverageTournamentStack, shortAllInVillain, shortAllInPressureBB,
           preflopStealSpot:unopenedPreflop && toCall <= BIG_BLIND && (pos.role === 'BTN' || pos.role === 'CO') && canRaise,
           facingLateSteal:phase === 'PreFlop' && toCall > 0 && (pos.role === 'SB' || pos.role === 'BB') && raiseCount <= 1 && (preflopAggressorRole === 'BTN' || preflopAggressorRole === 'CO'),
           preflopJamPressure:phase === 'PreFlop' && toCall > 0 && (allInCall || toCall >= BIG_BLIND * 18 || callCommitFrac >= .30 || (raiseCount >= 2 && toCall >= BIG_BLIND * 5)),
@@ -3118,7 +3152,7 @@
         else if (ctx.phase !== 'PreFlop' && ctx.postflopLastToAct) {PieAdjust(scores, 'bet', 75); PieAdjust(scores, 'raise', 50);}
 
         // Out-of-position callers in raised pots should not donk-bet air/backdoor-only hands into the aggressor.
-        if (ctx.phase !== 'PreFlop' && ctx.toCall <= 0 && !ctx.isPreflopAggressor && ctx.actorsBehind > 0 && (ctx.bucket === 'bad' || ctx.bucket === 'weak') && (ctx.drawPower || 0) < .35) {
+        if (ctx.phase !== 'PreFlop' && ctx.toCall <= 0 && !ctx.isPreflopAggressor && ctx.actorsBehind > 0 && !(ctx.passiveOpenPot && ctx.actorsBehind <= 1) && (ctx.bucket === 'bad' || ctx.bucket === 'weak') && (ctx.drawPower || 0) < .35) {
           const restraint = 250 + 200 * ctx.smart01 + 125 * ctx.patient01;
           PieAdjust(scores, 'check', restraint);
           PieAdjust(scores, 'bet', -restraint);
@@ -3147,21 +3181,21 @@
         const lastToAct = !!ctx.postflopLastToAct;
 
         if (ctx.passiveLateStabSpot) {
-          const headsUpLift = headsUp ? 150 + 75 * repeatedPassive + (lastToAct ? 150 : 50) : 0;
-          const positionLift = lastToAct ? 75 : (ctx.actorsBehind === 1 ? 25 : 0);
-          const stab = 175 + 425 * personality + headsUpLift + positionLift + (piece ? 75 : 0) + (hasAce ? 25 : 0);
+          const headsUpLift = headsUp ? 190 + 95 * repeatedPassive + (lastToAct ? 170 : 75) : 0;
+          const positionLift = lastToAct ? 230 : 145;
+          const stab = 260 + 520 * personality + headsUpLift + positionLift + (piece ? 95 : 0) + (hasAce ? 55 : 0);
           PieAdjust(scores, 'bet', stab);
-          PieAdjust(scores, 'check', -125 - 200 * personality - (headsUp ? 50 + 25 * repeatedPassive : 0));
-          PieAdjust(scores, 'allin', -225);
-          ctx.passiveTableStab = {kind:headsUp ? 'heads-up-late-open-pot-stab' : 'late-open-pot-stab', actorsBehind:ctx.actorsBehind, lastToAct, headsUp, repeatedPassive, personality, piece, hasAce, pressure:Math.round(stab)};
+          PieAdjust(scores, 'check', -185 - 255 * personality - (headsUp ? 70 + 35 * repeatedPassive : 0));
+          PieAdjust(scores, 'allin', -175);
+          ctx.passiveTableStab = {kind:headsUp ? 'heads-up-late-open-pot-stab' : 'late-open-pot-stab', actorsBehind:ctx.actorsBehind, lastToAct, secondToLast:ctx.actorsBehind === 1, headsUp, repeatedPassive, personality, piece, hasAce, pressure:Math.round(stab)};
         }
 
         if (ctx.passiveHeadsUpProbeSpot && (piece || hasAce || lastToAct || ctx.bucket !== 'bad')) {
           const firstToAct = !lastToAct;
-          const probe = 175 + 325 * personality + 75 * repeatedPassive + (lastToAct ? 150 : 50) + (piece ? 75 : 0) + (hasAce ? 75 : 0);
+          const probe = 215 + 385 * personality + 90 * repeatedPassive + (lastToAct ? 175 : 65) + (piece ? 85 : 0) + (hasAce ? 85 : 0);
           PieAdjust(scores, 'bet', probe);
-          PieAdjust(scores, 'check', -100 - 125 * personality - 25 * repeatedPassive - (lastToAct ? 50 : 0));
-          PieAdjust(scores, 'allin', -250);
+          PieAdjust(scores, 'check', -130 - 155 * personality - 35 * repeatedPassive - (lastToAct ? 65 : 0));
+          PieAdjust(scores, 'allin', -225);
           ctx.passiveHeadsUpProbe = {kind:firstToAct ? 'heads-up-first-to-act-probe' : 'heads-up-last-to-act-probe', passiveStreets:ctx.passivePostflopStreets, lastToAct, piece, hasAce, pressure:Math.round(probe)};
         }
 
@@ -3180,6 +3214,58 @@
         const fam = ctx.preflopFamily || ctx.preflopShape || {};
         const decentPreflop = ctx.phase === 'PreFlop' && (ctx.preflopClass !== 'trash' || fam.pair || fam.a >= 12 || fam.suited || fam.connector);
         const decentPostflop = ctx.phase !== 'PreFlop' && (ctx.bucket !== 'bad' || (ctx.drawPower || 0) >= .35 || (ctx.p?.hand || []).some(c => c.value === 14));
+        const lateStage = !!ctx.lateTournamentStage;
+        const latePressure = Number(ctx.lateTournamentPressure) || 0;
+
+        if (lateStage && latePressure > 0) {
+          if (ctx.phase === 'PreFlop') {
+            const hasPair = !!fam.pair;
+            const hasAce = fam.a === 14;
+            const hasKing = fam.a === 13 || fam.b === 13;
+            const premiumShortHanded = hasPair || hasAce || hasKing;
+            const playableShortHanded = premiumShortHanded || ctx.preflopClass === 'medium' || ctx.preflopClass === 'speculative' || !!fam.suited || !!fam.connector;
+
+            if (premiumShortHanded) {
+              const shoveBias = ctx.stackBB <= 18 ? 460 : ctx.stackBB <= 28 ? 210 : 85;
+              PieAdjust(scores, 'fold', -760 * latePressure);
+              PieAdjust(scores, 'call', 185 * latePressure);
+              PieAdjust(scores, 'bet', 260 * latePressure);
+              PieAdjust(scores, 'raise', (420 + (hasPair ? 95 : 0)) * latePressure);
+              PieAdjust(scores, 'allin', shoveBias * latePressure * (.75 + .45 * ctx.risky01));
+            } else if (playableShortHanded) {
+              PieAdjust(scores, 'fold', -255 * latePressure);
+              PieAdjust(scores, 'call', 110 * latePressure);
+              PieAdjust(scores, 'bet', 150 * latePressure);
+              PieAdjust(scores, 'raise', 205 * latePressure);
+              PieAdjust(scores, 'allin', (ctx.stackBB <= 12 ? 220 : 60) * latePressure * (.7 + .45 * ctx.risky01));
+            }
+
+            ctx.lateTournamentAdjustment = {stage:'preflop', remaining:ctx.tournamentRemaining, pressure:latePressure, premiumShortHanded, playableShortHanded, family:fam.family};
+          } else {
+            const trueStrong = (ctx.bucket === 'strong' || ctx.bucket === 'nearnut') && !ctx.boardDominated && !ctx.kickerOnly;
+            const mediocreLive = ctx.bucket === 'weak' || ctx.bucket === 'medium' || ctx.bucket === 'nice' || (ctx.drawPower || 0) >= .35;
+            if (mediocreLive) {
+              PieAdjust(scores, 'fold', -185 * latePressure);
+              PieAdjust(scores, 'check', -150 * latePressure);
+              PieAdjust(scores, 'call', 120 * latePressure);
+              PieAdjust(scores, 'bet', (285 + 115 * ctx.risky01 + 80 * ctx.bluff01) * latePressure);
+              PieAdjust(scores, 'raise', (225 + 125 * ctx.risky01 + 95 * ctx.bluff01) * latePressure);
+              PieAdjust(scores, 'allin', (ctx.stackBB <= 16 ? 360 : 115) * latePressure * (.75 + .45 * ctx.risky01));
+            }
+            if (trueStrong && ctx.spr > 1.35) {
+              if (ctx.toCall > 0) {
+                PieAdjust(scores, 'call', (260 + 120 * ctx.patient01) * latePressure);
+                PieAdjust(scores, 'raise', -190 * latePressure);
+                PieAdjust(scores, 'allin', -260 * latePressure);
+              } else {
+                PieAdjust(scores, 'check', (310 + 140 * ctx.patient01 + 75 * ctx.smart01) * latePressure);
+                PieAdjust(scores, 'bet', -145 * latePressure);
+                PieAdjust(scores, 'allin', -285 * latePressure);
+              }
+            }
+            ctx.lateTournamentAdjustment = {stage:'postflop', remaining:ctx.tournamentRemaining, pressure:latePressure, trueStrong, mediocreLive};
+          }
+        }
 
         if ((ctx.stackBB || 99) <= 5 && ctx.legalActions?.includes('allin') && (decentPreflop || decentPostflop)) {
           const urgency = clamp01((6 - ctx.stackBB) / 4);
@@ -3717,11 +3803,11 @@
           stackCommitSensitivity:ctx.stackCommitSensitivity, effectiveStackCommitCall:ctx.effectiveStackCommitCall, allInCall:ctx.allInCall, role:ctx.role,
           pos01:ctx.pos01, actorsAhead:ctx.actorsAhead, actorsBehind:ctx.actorsBehind, postflopLastToAct:ctx.postflopLastToAct, postflopOutOfPosition:ctx.postflopOutOfPosition,
           preflopAggressorRole:ctx.preflopAggressorRole, preflopLimpers:ctx.preflopLimpers, unopenedPreflop:ctx.unopenedPreflop, preflopStealSpot:ctx.preflopStealSpot,
-          facingLateSteal:ctx.facingLateSteal, shortHandedPreflop:ctx.shortHandedPreflop, tablePlayers:ctx.tablePlayers,
+          facingLateSteal:ctx.facingLateSteal, shortHandedPreflop:ctx.shortHandedPreflop, tablePlayers:ctx.tablePlayers, tournamentRemaining:ctx.tournamentRemaining, lateTournamentStage:ctx.lateTournamentStage, lateTournamentPressure:ctx.lateTournamentPressure,
           preflopFamily:{...(ctx.preflopFamily || {})}, preflopPlan:{...(ctx.preflopPlan || {})}, preflopShape:{...(ctx.preflopShape || {})},
           cheapFlopStatus:{...(ctx.cheapFlopStatus || {})}, preflopDrawDiscipline:{...(ctx.preflopDrawDiscipline || {})}, stackOffProfile:{...(ctx.stackOffProfile || {})},
           stackOffDiscipline:{...(ctx.stackOffDiscipline || {})}, blindSteal:{...(ctx.blindSteal || {})},
-          passiveTableStab:{...(ctx.passiveTableStab || {})}, passiveHeadsUpProbe:{...(ctx.passiveHeadsUpProbe || {})}, passiveRiverProbe:{...(ctx.passiveRiverProbe || {})},
+          passiveTableStab:{...(ctx.passiveTableStab || {})}, passiveHeadsUpProbe:{...(ctx.passiveHeadsUpProbe || {})}, passiveRiverProbe:{...(ctx.passiveRiverProbe || {})}, lateTournamentAdjustment:{...(ctx.lateTournamentAdjustment || {})},
           continuationBetPressure:{...(ctx.continuationBetPressure || {})}, massiveAirBluff:{...(ctx.massiveAirBluff || {})}, shortStackJam:{...(ctx.shortStackJam || {})},
           bigStackShortAllInDefense:{...(ctx.bigStackShortAllInDefense || {})}, stackOffDrawRelief:{...(ctx.stackOffDrawRelief || {})},
           betSizing:{...(ctx.betSizing || {})}, bucketBasePoints:{...(ctx.pieBucketBase || {})}, bucketBaseTables:PIE_BUCKET_BASE_POINTS,
@@ -3884,7 +3970,7 @@
         if (!winnerSeats.size && state.pot > 0) {
           const fallback = contenders.find(p => p && !p.folded && p.hand?.length === 2);
           if (fallback) {winnings.set(fallback.seat, (winnings.get(fallback.seat) || 0) + state.pot);showdownWinnings.set(fallback.seat, state.pot);
-          winnerSeats.add(fallback.seat);lines.push(`${fallback.name} wins ${money(state.pot)}. Everyone else folded.`);}
+          winnerSeats.add(fallback.seat);lines.push(NoShowdownWinText(fallback, state.pot));}
         }
         FinishHandResult({lines,winnings,winnerSeats,revealAll:true,resultText:ShowdownResultText(showdownWinnings, evalBySeat)});
       }
@@ -4453,6 +4539,8 @@
       };
       
       $('soundBtn').onclick = () => {state.soundOn = !state.soundOn;$('soundBtn').textContent = state.soundOn ? 'Sound: On' : 'Sound: Off';if (state.soundOn) PlaySound('chips');};
+      $('showLogBtn').onclick = () => {$('logPanel')?.classList.remove('hidden');RenderLog();};
+      $('closeLogBtn').onclick = () => {$('logPanel')?.classList.add('hidden');};
       document.body.addEventListener('pointerdown', initAudio, { once: true });
       $('foldBtn').onclick = () => Action('FOLD');
       $('callBtn').onclick = () => Action('CALL');
