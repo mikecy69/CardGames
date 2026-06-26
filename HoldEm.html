@@ -4576,8 +4576,8 @@
       
       const Tournament = {
         active: false,synchronized: true,entrants: [],tables: [],winnerAnnounced: false,visibleTableId: 0,intervalMinutes: 5,levelIndex: 0,
-        blindLevels: [[3,5],[10,15],[15,30],[25,50],[35,70],[50,100],[125,250],[150,300],[200,400],[300,600],[500,1000],[750,1500],
-          [1000,2000],[1500,3000],[2000,4000],[2500,5000]],nextLevelAt: 0,timers: { blinds: null, sim: null },
+        blindLevels: [[3,5],[5,10],[10,20],[15,30],[25,50],[35,70],[50,100],[75,150],[100,200],[150,300],[200,400],[250,500],
+          [500,1000]],nextLevelAt: 0,timers: { blinds: null, sim: null },
           
         init(humanSeat) {
           this.reset();
