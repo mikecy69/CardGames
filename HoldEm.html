@@ -1239,8 +1239,8 @@
           1: ['Under the Gun'],
           2: ['Under the Gun', 'Cutoff'],
           3: ['Under the Gun', 'Hijack', 'Cutoff'],
-          4: ['Under the Gun', 'Middle Position', 'Hijack', 'Cutoff'],
-          5: ['Under the Gun', 'Under the Gun +1', 'Middle Position', 'Hijack', 'Cutoff']
+          4: ['Under the Gun', 'Lojack', 'Hijack', 'Cutoff'],
+          5: ['Under the Gun', 'UTG +1', 'Lojack', 'Hijack', 'Cutoff']
         };
         
         let labels = labelsByCount[others.length];
@@ -1248,14 +1248,14 @@
         if (!labels) {labels = [];
           for (let i = 0; i < others.length; i++) {
             if (i === 0) labels.push('Under the Gun');
-            else if (i === 1) labels.push('Under the Gun +1');
+            else if (i === 1) labels.push('UTG +1');
             else if (i === others.length - 2) labels.push('Hijack');
             else if (i === others.length - 1) labels.push('Cutoff');
-            else labels.push('Middle Position');
+            else labels.push('Lojack');
           }
         }
         
-        others.forEach((seatIdx, i) => {roles.set(seatIdx, labels[i] || 'Middle Position');});
+        others.forEach((seatIdx, i) => {roles.set(seatIdx, labels[i] || 'Lojack');});
         state.handRoles = roles;
       }
 
