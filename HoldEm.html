@@ -101,7 +101,7 @@
         text-shadow:0 2px 4px #000,0 0 8px rgba(0,0,0,.7) !important;
       }
       #tableStatus:empty {display:none;}
-      #betBtn, #betPctBtn {width: 175px;}
+      #betBtn, #betPctBtn {width:60px;height:35px;display: inline-flex; justify-content:center; margin-right: 5px; align-items: center;padding: 8 8px;border-radius: 10px;font-size: 14px;font-weight: 700;text-shadow: none;}
       #betAmount, #betPct {width: 100px !important; text-align: center;}
       
       .watch-btn {background:#35a;}
@@ -375,10 +375,9 @@
             <button id="foldBtn" disabled>Fold</button>
             <button id="callBtn" disabled>Call/Check</button>
             <div class="action-gap"></div>
-            <button id="betBtn" disabled>Bet/Raise: $</button>
-            <input id="betAmount" type="number" min="4" step="1" value="20" />
-            <button id="betPctBtn" disabled>Bet/Raise: Pot %</button>
-            <input id="betPct" type="number" min="0" value="25" step="5" aria-label="Bet % Pot"/>
+            <span><strong>BET/RAISE:</strong></span>
+            <div><button id="betBtn" disabled>$</button><input id="betAmount" type="number" min="4" step="1" value="20"/></div>
+            <div><button id="betPctBtn" disabled>%POT</button><input id="betPct" type="number" min="0" value="25" step="5"/></div>
             <button id="allInBtn" disabled>All-In</button>
             <div class="action-gap"></div>
             <button id="nextHandBtn" class="table-control-btn next-hand-btn" disabled>New Hand</button>
